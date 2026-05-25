@@ -57,7 +57,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/itinerary_db
       - REDIS_URL=redis://redis:6379/0
-      - GEMINI_API_KEY=AIzaSyBgbxB9YlqG-gp9vAL0Ryj8Pe-W-DWK4Sg
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
     depends_on:
       redis:
         condition: service_healthy
