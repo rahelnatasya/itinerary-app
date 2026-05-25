@@ -7,8 +7,16 @@ from rq import Queue
 from sqlalchemy.orm import Session
 
 from database import get_db
+import models
 from repository import DestinationRepository, TripRepository
-from schemas import DestinationCreate, DestinationRead, DestinationUpdate, TripCreate, TripRead
+from schemas import (
+    DestinationCreate,
+    DestinationRead,
+    DestinationUpdate,
+    DestinationVoteRequest,
+    TripCreate,
+    TripRead,
+)
 from worker.tasks import process_trip
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -54,6 +62,29 @@ def update_destination(id: UUID, payload: DestinationUpdate, db: Session = Depen
         notes=payload.notes,
         client_version=payload.version,
     )
+    return dest
+
+
+@router.post("/destinations/{destination_id}/vote", response_model=DestinationRead)
+def vote_destination(
+    destination_id: UUID,
+    payload: DestinationVoteRequest,
+    db: Session = Depends(get_db),
+):
+    dest = db.query(models.Destination).filter(models.Destination.id == destination_id).first()
+    if not dest:
+        raise HTTPException(status_code=404, detail="Destination not found")
+
+    vote_type = payload.vote_type
+    if vote_type == "like":
+        dest.likes += 1
+    elif vote_type == "dislike":
+        dest.dislikes += 1
+    else:
+        raise HTTPException(status_code=400, detail="Invalid vote_type")
+
+    db.commit()
+    db.refresh(dest)
     return dest
 
 

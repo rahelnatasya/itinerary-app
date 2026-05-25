@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,8 +7,10 @@ import models
 from database import Base, engine
 from routers import router
 
-# Reset tabel untuk development (sementara) agar schema terbaru diterapkan
-Base.metadata.drop_all(bind=engine)
+# Reset tabel untuk development (aktifkan hanya jika RESET_DB=true)
+if os.getenv("RESET_DB", "false").lower() == "true":
+    Base.metadata.drop_all(bind=engine)
+
 # Membuat tabel secara otomatis di PostgreSQL jika belum ada saat startup
 Base.metadata.create_all(bind=engine)
 

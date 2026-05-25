@@ -25,8 +25,12 @@ class DestinationUpdate(BaseModel):
 class DestinationRead(BaseModel):
     id: UUID
     name: str
+    added_by: str
+    notes: Optional[str] = None
     order_index: int
     is_feasible: Optional[bool] = None
+    likes: int
+    dislikes: int
     version: int
 
     model_config = ConfigDict(from_attributes=True)
@@ -50,5 +54,11 @@ class TripRead(BaseModel):
     version: int
     ai_insight: Optional[Any] = None
     destinations: List[DestinationRead] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DestinationVoteRequest(BaseModel):
+    vote_type: str
 
     model_config = ConfigDict(from_attributes=True)

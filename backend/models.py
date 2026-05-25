@@ -36,6 +36,8 @@ class Destination(Base):
     notes = Column(Text, nullable=True)
     order_index = Column(Integer, default=0)
     is_feasible = Column(Boolean, nullable=True)
+    likes = Column(Integer, default=0)
+    dislikes = Column(Integer, default=0)
     version = Column(Integer, default=1, nullable=False)
 
     # Relasi balik ke Trip
