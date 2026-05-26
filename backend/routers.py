@@ -95,12 +95,60 @@ def vote_destination(
         raise HTTPException(status_code=404, detail="Destination not found")
 
     vote_type = payload.vote_type
-    if vote_type == "like":
-        dest.likes += 1
-    elif vote_type == "dislike":
-        dest.dislikes += 1
-    else:
+    if vote_type not in {"like", "dislike"}:
         raise HTTPException(status_code=400, detail="Invalid vote_type")
+
+    existing_trip_vote = (
+        db.query(models.DestinationVote)
+        .join(models.Destination, models.Destination.id == models.DestinationVote.destination_id)
+        .filter(
+            models.DestinationVote.user_name == user_name,
+            models.Destination.trip_id == dest.trip_id,
+        )
+        .first()
+    )
+
+    if existing_trip_vote and existing_trip_vote.destination_id != destination_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Anda hanya memiliki 1 hak suara di itinerary ini! "
+                "Batalan vote sebelumnya jika ingin pindah pilihan."
+            ),
+        )
+
+    existing_vote = existing_trip_vote
+
+    if existing_vote:
+        if existing_vote.vote_type == vote_type:
+            if vote_type == "like":
+                dest.likes = max(dest.likes - 1, 0)
+            else:
+                dest.dislikes = max(dest.dislikes - 1, 0)
+            db.delete(existing_vote)
+        else:
+            if existing_vote.vote_type == "like":
+                dest.likes = max(dest.likes - 1, 0)
+            else:
+                dest.dislikes = max(dest.dislikes - 1, 0)
+
+            existing_vote.vote_type = vote_type
+
+            if vote_type == "like":
+                dest.likes += 1
+            else:
+                dest.dislikes += 1
+    else:
+        new_vote = models.DestinationVote(
+            destination_id=destination_id,
+            user_name=user_name,
+            vote_type=vote_type,
+        )
+        db.add(new_vote)
+        if vote_type == "like":
+            dest.likes += 1
+        else:
+            dest.dislikes += 1
 
     db.commit()
     db.refresh(dest)

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Date, DateTime, Text, UUID
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Date, DateTime, Text, UUID, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
@@ -42,8 +42,32 @@ class Destination(Base):
 
     # Relasi balik ke Trip
     trip = relationship("Trip", back_populates="destinations")
+    votes = relationship(
+        "DestinationVote",
+        back_populates="destination",
+        cascade="all, delete-orphan",
+    )
 
     # Konfigurasi Otomatis Optimistic Locking untuk SQLAlchemy
     __mapper_args__ = {
         "version_id_col": version
     }
+
+
+class DestinationVote(Base):
+    __tablename__ = "destination_votes"
+    __table_args__ = (
+        UniqueConstraint("destination_id", "user_name", name="uq_destination_vote"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    destination_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("destinations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_name = Column(String, nullable=False)
+    vote_type = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    destination = relationship("Destination", back_populates="votes")
