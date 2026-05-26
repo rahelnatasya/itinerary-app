@@ -1,12 +1,16 @@
+import asyncio
+import json
 import os
 from uuid import UUID
 
 import redis
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from rq import Queue
 from sqlalchemy.orm import Session
 
-from database import get_db
+from auth import create_access_token, get_current_user, get_current_user_from_token
+from database import SessionLocal, get_db
 import models
 from repository import DestinationRepository, TripRepository
 from schemas import (
@@ -14,6 +18,7 @@ from schemas import (
     DestinationRead,
     DestinationUpdate,
     DestinationVoteRequest,
+    GuestAuthRequest,
     TripCreate,
     TripRead,
 )
@@ -27,7 +32,11 @@ queue = Queue("default", connection=redis_conn)
 
 
 @router.post("/destinations", response_model=DestinationRead, status_code=status.HTTP_201_CREATED)
-def create_destination(payload: DestinationCreate, db: Session = Depends(get_db)):
+def create_destination(
+    payload: DestinationCreate,
+    db: Session = Depends(get_db),
+    user_name: str = Depends(get_current_user),
+):
     trip = TripRepository.get_trip_by_id(db, payload.trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -36,14 +45,18 @@ def create_destination(payload: DestinationCreate, db: Session = Depends(get_db)
         db,
         trip_id=payload.trip_id,
         name=payload.name,
-        added_by=payload.added_by,
+        added_by=user_name,
         notes=payload.notes,
     )
     return dest
 
 
 @router.post("/trips", status_code=status.HTTP_201_CREATED)
-def create_trip(payload: TripCreate, db: Session = Depends(get_db)):
+def create_trip(
+    payload: TripCreate,
+    db: Session = Depends(get_db),
+    user_name: str = Depends(get_current_user),
+):
     trip = TripRepository.create_trip(
         db,
         title=payload.title,
@@ -54,7 +67,12 @@ def create_trip(payload: TripCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/destinations/{id}", response_model=DestinationRead)
-def update_destination(id: UUID, payload: DestinationUpdate, db: Session = Depends(get_db)):
+def update_destination(
+    id: UUID,
+    payload: DestinationUpdate,
+    db: Session = Depends(get_db),
+    user_name: str = Depends(get_current_user),
+):
     dest = DestinationRepository.update_destination(
         db,
         dest_id=id,
@@ -70,6 +88,7 @@ def vote_destination(
     destination_id: UUID,
     payload: DestinationVoteRequest,
     db: Session = Depends(get_db),
+    user_name: str = Depends(get_current_user),
 ):
     dest = db.query(models.Destination).filter(models.Destination.id == destination_id).first()
     if not dest:
@@ -88,8 +107,14 @@ def vote_destination(
     return dest
 
 
+@router.post("/auth/guest")
+def guest_auth(payload: GuestAuthRequest):
+    token = create_access_token({"sub": payload.name})
+    return {"access_token": token, "token_type": "bearer"}
+
+
 @router.get("/trips/{id}", response_model=TripRead)
-def get_trip(id: UUID, db: Session = Depends(get_db)):
+def get_trip(id: UUID, db: Session = Depends(get_db), user_name: str = Depends(get_current_user)):
     trip = TripRepository.get_trip_by_id(db, id)
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -97,7 +122,11 @@ def get_trip(id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/trips/join/{room_code}")
-def join_trip(room_code: str, db: Session = Depends(get_db)):
+def join_trip(
+    room_code: str,
+    db: Session = Depends(get_db),
+    user_name: str = Depends(get_current_user),
+):
     trip = TripRepository.get_trip_by_room_code(db, room_code)
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -105,7 +134,11 @@ def join_trip(room_code: str, db: Session = Depends(get_db)):
 
 
 @router.post("/trips/{id}/analyze")
-def analyze_trip(id: UUID, db: Session = Depends(get_db)):
+def analyze_trip(
+    id: UUID,
+    db: Session = Depends(get_db),
+    user_name: str = Depends(get_current_user),
+):
     trip = TripRepository.get_trip_by_id(db, id)
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -120,3 +153,41 @@ def analyze_trip(id: UUID, db: Session = Depends(get_db)):
     queue.enqueue(process_trip, str(trip.id))
 
     return {"trip_id": str(trip.id), "status": "processing"}
+
+
+@router.get("/trips/{id}/stream")
+async def stream_trip(id: UUID, token: str = Query(...)):
+    get_current_user_from_token(token)
+    async def event_generator():
+        while True:
+            db = SessionLocal()
+            try:
+                trip = TripRepository.get_trip_by_id(db, id)
+                if not trip:
+                    payload = {"error": "Trip not found"}
+                else:
+                    payload = {
+                        "id": str(trip.id),
+                        "status": trip.status,
+                        "destinations_count": len(trip.destinations),
+                        "version": trip.version,
+                    }
+                yield f"data: {json.dumps(payload)}\n\n"
+            except Exception as exc:
+                error_payload = {"error": f"Stream error: {exc}"}
+                yield f"data: {json.dumps(error_payload)}\n\n"
+            finally:
+                db.close()
+
+            await asyncio.sleep(1)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=headers,
+    )

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class DestinationCreate(BaseModel):
     trip_id: UUID
     name: str
-    added_by: str
+    added_by: Optional[str] = None
     notes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -60,5 +60,11 @@ class TripRead(BaseModel):
 
 class DestinationVoteRequest(BaseModel):
     vote_type: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GuestAuthRequest(BaseModel):
+    name: str
 
     model_config = ConfigDict(from_attributes=True)
