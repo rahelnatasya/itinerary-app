@@ -1,8 +1,4 @@
 # Jakarta Weekend Route Optimizer 🗺️🚀
-
-**Submission Final - INaAI Competition 2026** **Role:** Full-stack Developer / AI Engineer  
-**Peserta:** Rahel N Pangaribuan  
-
 ---
 
 ## 📌 Deskripsi Proyek
