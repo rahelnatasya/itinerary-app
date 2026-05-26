@@ -24,30 +24,40 @@ def process_trip(trip_id: str) -> None:
         start_location = trip.start_location or "Titik Kumpul"
 
         ai_prompt = f"""
-        Anda adalah Pakar Transportasi Publik & Pariwisata Jakarta.
-        Tugas Anda menyusun rute perjalanan 1 hari yang efisien di Jakarta.
+        Anda adalah Pakar Transportasi Publik & Perencana Perjalanan Jakarta.
+          Tugas Anda menyusun rute 1 hari (maksimal 10-12 jam perjalanan & wisata) yang rasional dan efisien.
 
-        DATA PERJALANAN:
-        - Titik Kumpul (Awal): {start_location}
-        - Wishlist Destinasi: {destination_names}
+          DATA PERJALANAN:
+          - Titik Kumpul (Awal): {start_location}
+          - Wishlist Destinasi & Vote: {destination_names}
+             *(Catatan: Format list berupa "Nama Destinasi (Likes: X, Dislikes: Y)")*
 
-        ATURAN KETAT:
-        1. Rute WAJIB dimulai dari "{start_location}". Coret destinasi di luar Jakarta.
-        2. Di bagian "summary", sebutkan total perkiraan biaya (transportasi + tiket wisata) untuk trip ini.
-        3. Di dalam array "ordered_route", tambahkan info harga tiket dan jam buka di sebelah nama tempat. (Contoh: "Moja Museum (Rp 135.000 | 11:00-19:30)").
-        4. Di dalam array "transit_steps", sebutkan rute spesifik (Transjakarta/MRT/KRL) beserta biaya transportasinya. (Contoh: "Naik MRT ke Senayan (Rp 5.000), lalu jalan kaki").
-        5. PRIORITASKAN memasukkan destinasi yang memiliki banyak "Likes" ke dalam rute. CORET destinasi yang memiliki lebih banyak "Dislikes" daripada "Likes".
+          ALGORITMA & ATURAN KETAT:
+          1. PENYARINGAN AWAL: Coret destinasi di luar wilayah Jakarta atau yang memiliki "Dislikes" lebih banyak dari "Likes".
+          2. PENENTUAN URUTAN (SANGAT PENTING):
+              - Rute WAJIB dimulai dari Titik Kumpul: "{start_location}".
+              - Destinasi PERTAMA yang dikunjungi WAJIB destinasi dengan jumlah "Likes" TERBANYAK.
+              - Destinasi KEDUA dan seterusnya WAJIB dipilih berdasarkan JARAK TERDEKAT (geografis/waktu tempuh) dari destinasi sebelumnya, agar tidak membuang waktu bolak-balik di jalan.
+          3. BATASAN WAKTU (FEASIBILITY CHECK):
+              - Kalkulasi estimasi total waktu (waktu transit antar lokasi + durasi standar wisata di tiap tempat).
+              - Jika total waktu untuk mengunjungi semua wishlist melebihi kapasitas 1 hari (lebih dari 12 jam), HENTIKAN penambahan destinasi.
+              - Masukkan sisa destinasi yang tidak muat waktunya ke array "removed_destinations".
+              - Di bagian "removal_reason", jelaskan dengan spesifik: "Waktu tidak cukup untuk mengunjungi semua destinasi dalam 1 hari, sehingga destinasi X dan Y dihapus."
+          4. KONTEN RESPON:
+              - "summary": Berikan kesimpulan apakah rencana awal mereka realistis. Sebutkan juga total estimasi biaya (transport + tiket).
+              - "ordered_route": Tambahkan info harga tiket dan jam operasional. (Contoh: "Monas (Rp 15.000 | 08:00-16:00)").
+              - "transit_steps": Berikan rute spesifik (Transjakarta/MRT) dan biaya antar titik lokasi.
         
-        KEMBALIKAN HANYA JSON DENGAN FORMAT BERIKUT TANPA TEKS TAMBAHAN:
-        {{
-            "summary": "Total Estimasi Biaya: Rp 150.000. Rute ini...",
-            "feasible_destinations": ["Destinasi 1"],
-            "removed_destinations": [],
-            "removal_reason": "",
-            "ordered_route": ["{start_location}", "Nama Tempat (Harga | Jam)"],
-            "transit_steps": ["Titik awal keberangkatan", "Naik TJ Koridor 1 (Rp 3.500)..."]
-        }}
-        """
+          KEMBALIKAN HANYA JSON DENGAN FORMAT BERIKUT TANPA TEKS TAMBAHAN:
+          {{
+                "summary": "Kesimpulan kelayakan waktu... Total Estimasi Biaya: Rp 150.000...",
+                "feasible_destinations": ["Destinasi 1", "Destinasi 2"],
+                "removed_destinations": ["Destinasi Sisa 1", "Destinasi Sisa 2"],
+                "removal_reason": "Waktu tidak cukup untuk dikunjungi semua dalam 1 hari...",
+                "ordered_route": ["{start_location}", "Destinasi 1 (Harga | Jam)", "Destinasi 2 (Harga | Jam)"],
+                "transit_steps": ["Dari start naik X ke Destinasi 1...", "Jalan kaki ke Destinasi 2..."]
+          }}
+          """
 
         # Cara baru memanggil Gemini 1.5 Flash
         response = client.models.generate_content(
